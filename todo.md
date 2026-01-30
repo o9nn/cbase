@@ -15,6 +15,20 @@
 - [x] Conversation starters configuration
 - [x] Agent constraints configuration
 
+## RAG Knowledge System 🆕
+
+- [x] Knowledge sources management (text, file, URL, Q&A)
+- [x] Document ingestion and processing
+- [x] Text chunking with smart boundaries
+- [x] Vector embedding generation
+- [x] Semantic similarity search
+- [x] Context augmentation for LLM
+- [x] Training job tracking
+- [x] Batch and individual processing
+- [x] Knowledge Base UI page
+- [x] RAG toggle in Playground
+- [x] Real-time status updates
+
 ## Chat Logs
 
 - [x] Conversation list with preview
@@ -40,6 +54,7 @@
 - [x] Conversation starters display
 - [x] Real-time LLM integration for testing
 - [x] Message history in playground
+- [x] RAG knowledge retrieval toggle
 
 ## Settings Panel
 
