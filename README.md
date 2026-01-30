@@ -4,7 +4,7 @@
 
 **Comprehensive AI Chatbot Management Platform with Advanced RAG Features**
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/o9nn/cbase)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/o9nn/cbase)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node-20.x-green.svg)](https://nodejs.org/)
@@ -230,9 +230,16 @@ docker-compose down
   - Dark mode UI with purple/indigo theme
   - Comprehensive documentation
 
+### ✅ Recently Completed (January 2026)
+
+- **Phase 8**: File upload & processing ✅
+  - PDF, DOCX, DOC, TXT, MD file support
+  - Automatic text extraction and RAG processing
+  - File management UI with status tracking
+  - Secure file handling with authorization
+
 ### 🚧 In Progress (Q2 2026)
 
-- **Phase 8**: File upload & processing (PDF, DOCX, TXT)
 - **Phase 9**: URL scraping & web crawling
 - Enhanced testing infrastructure
 - Performance optimization
@@ -460,24 +467,35 @@ Built with amazing open-source technologies:
 
 ## 📈 Project Status
 
-**Current Version**: 2.0.0  
+**Current Version**: 2.1.0  
 **Status**: Production Ready ✅  
 **Last Updated**: January 30, 2026
 
 ### Statistics
 
-- **85%** feature complete
-- **156** features implemented
-- **11** API endpoints
+- **90%** feature complete (Phase 8 completed)
+- **165+** features implemented
+- **14** API endpoints (3 new file upload endpoints)
+- **8** major pages
+- **4** database tables (added fileUploads)
+- **2,200+** lines of code added for file processing
 - **7** major pages
 - **3** database tables for RAG
 - **1,775** lines of code added in RAG implementation
 
 ---
 
-## 🎉 What's New in v2.0.0
+## 🎉 What's New in v2.1.0
 
-### Major Features
+### Major Features (Phase 8)
+✨ **File Upload & Processing**
+  - Upload PDF, DOCX, DOC, TXT, MD files
+  - Automatic text extraction
+  - Seamless RAG integration
+  - File management UI with status tracking
+  - Secure file handling with authorization
+
+### Previous Features (v2.0.0)
 ✨ Complete RAG knowledge training system  
 ✨ Advanced vector search with semantic similarity  
 ✨ Batch training capabilities  
@@ -487,6 +505,9 @@ Built with amazing open-source technologies:
 ✨ Dark mode UI with purple/indigo theme
 
 ### Improvements
+🚀 Enhanced file processing pipeline
+🚀 Improved security with ownership verification
+🚀 Better error handling for file operations
 🚀 Enhanced performance with database optimization  
 🚀 Improved error handling and user feedback  
 🚀 Better documentation with examples  
