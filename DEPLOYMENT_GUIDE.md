@@ -42,7 +42,7 @@
 - **Node.js**: v18.x or v20.x LTS
 - **pnpm**: v10.4.1 or higher
 - **MySQL**: v8.0+
-- **Redis**: v7.0+ (optional, for caching)
+- **Redis**: v7.x (optional, for caching)
 - **nginx**: v1.24+ (for reverse proxy)
 
 ### Cloud Provider Options
@@ -210,13 +210,21 @@ SHOW INDEXES FROM agents;
 
 ```sql
 -- For production, set optimal configuration
+-- Note: These settings should be added to my.cnf or my.ini for persistence
+-- Temporary session settings:
 SET GLOBAL innodb_buffer_pool_size = 2147483648;  -- 2GB
 SET GLOBAL max_connections = 200;
-SET GLOBAL query_cache_size = 67108864;  -- 64MB
 
 -- Enable slow query log for monitoring
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL long_query_time = 2;
+
+-- For permanent settings, add to my.cnf (Linux) or my.ini (Windows):
+-- [mysqld]
+-- innodb_buffer_pool_size = 2G
+-- max_connections = 200
+-- slow_query_log = 1
+-- long_query_time = 2
 ```
 
 ---
@@ -383,10 +391,10 @@ services:
   db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_ROOT_PASSWORD: CHANGE_THIS_ROOT_PASSWORD
       MYSQL_DATABASE: cbase_production
       MYSQL_USER: cbase_user
-      MYSQL_PASSWORD: password
+      MYSQL_PASSWORD: CHANGE_THIS_USER_PASSWORD
     volumes:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
@@ -903,12 +911,20 @@ BACKUP_DIR="/var/backups/mysql"
 DATE=$(date +%Y%m%d_%H%M%S)
 DB_NAME="cbase_production"
 DB_USER="cbase_user"
-DB_PASS="your_password"
+
+# ⚠️ SECURITY: Store password in .my.cnf instead of hardcoding
+# Create ~/.my.cnf with:
+# [client]
+# user=cbase_user
+# password=your_secure_password
 
 mkdir -p $BACKUP_DIR
 
-# Create backup
-mysqldump -u $DB_USER -p$DB_PASS $DB_NAME | gzip > $BACKUP_DIR/backup_$DATE.sql.gz
+# Create backup (reads credentials from ~/.my.cnf)
+mysqldump --defaults-extra-file=~/.my.cnf $DB_NAME | gzip > $BACKUP_DIR/backup_$DATE.sql.gz
+
+# Or use environment variable
+# mysqldump -u $DB_USER -p"${MYSQL_PASSWORD}" $DB_NAME | gzip > $BACKUP_DIR/backup_$DATE.sql.gz
 
 # Keep only last 30 days
 find $BACKUP_DIR -name "backup_*.sql.gz" -mtime +30 -delete

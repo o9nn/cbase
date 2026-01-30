@@ -321,6 +321,9 @@ FORGE_API_URL=https://api.openai.com/v1
 AWS_ACCESS_KEY_ID=your-aws-key
 AWS_SECRET_ACCESS_KEY=your-aws-secret
 S3_BUCKET=your-bucket-name
+
+# ⚠️ WARNING: Never commit actual credentials to version control!
+# Use environment variables or secure secrets management in production.
 ```
 
 See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for complete configuration.
@@ -385,7 +388,8 @@ pnpm test -- --coverage
 
 ### Reporting Security Issues
 
-Please report security vulnerabilities to: security@example.com
+Please report security vulnerabilities via GitHub Security Advisories:
+https://github.com/o9nn/cbase/security/advisories
 
 Do not open public issues for security concerns.
 
@@ -443,16 +447,14 @@ Built with amazing open-source technologies:
 
 ### Getting Help
 
-- **Documentation**: [Complete docs](./docs/)
+- **Documentation**: [Complete docs in repository](https://github.com/o9nn/cbase)
 - **GitHub Issues**: [Report bugs](https://github.com/o9nn/cbase/issues)
 - **GitHub Discussions**: [Ask questions](https://github.com/o9nn/cbase/discussions)
-- **Email**: support@example.com
 
 ### Stay Connected
 
 - **GitHub**: [@o9nn](https://github.com/o9nn)
-- **Twitter**: [@example](https://twitter.com/example)
-- **Discord**: [Join our community](https://discord.gg/example)
+- **Repository**: [o9nn/cbase](https://github.com/o9nn/cbase)
 
 ---
 

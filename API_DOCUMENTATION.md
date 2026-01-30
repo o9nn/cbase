@@ -1027,10 +1027,9 @@ print(message["content"])
 ## 📞 Support
 
 ### Getting Help
-- **Documentation**: https://docs.example.com
+- **Documentation**: https://github.com/o9nn/cbase
 - **GitHub Issues**: https://github.com/o9nn/cbase/issues
-- **Email Support**: api-support@example.com
-- **Discord Community**: https://discord.gg/example
+- **GitHub Discussions**: https://github.com/o9nn/cbase/discussions
 
 ### Reporting Issues
 When reporting API issues, include:
