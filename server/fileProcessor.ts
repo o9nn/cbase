@@ -34,7 +34,7 @@ export async function extractTextFromPDF(filePath: string): Promise<ProcessedFil
       text: data.text,
       metadata: {
         pageCount: data.numpages,
-        wordCount: data.text.split(/\s+/).length,
+        wordCount: data.text.trim().length === 0 ? 0 : data.text.trim().split(/\s+/).length,
         title: data.info?.Title,
         author: data.info?.Author,
       }
@@ -55,7 +55,7 @@ export async function extractTextFromDOCX(filePath: string): Promise<ProcessedFi
     return {
       text: result.value,
       metadata: {
-        wordCount: result.value.split(/\s+/).length,
+        wordCount: result.value.trim().length === 0 ? 0 : result.value.trim().split(/\s+/).length,
         messages: result.messages.map(m => m.message),
       }
     };
@@ -74,7 +74,7 @@ export async function extractTextFromPlainText(filePath: string): Promise<Proces
     return {
       text,
       metadata: {
-        wordCount: text.split(/\s+/).length,
+        wordCount: text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length,
       }
     };
   } catch (error) {

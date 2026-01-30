@@ -51,6 +51,7 @@ export default function KnowledgeBase() {
   const { data: agent } = trpc.agent.get.useQuery({ id: agentId });
   const { data: sources = [], isLoading } = trpc.knowledge.list.useQuery({ agentId });
   const { data: trainingJobs = [] } = trpc.knowledge.getTrainingJobs.useQuery({ agentId });
+  const { data: fileUploads = [] } = trpc.knowledge.listFiles.useQuery({ agentId });
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [sourceType, setSourceType] = useState<"text" | "file" | "url" | "qa">("text");
@@ -105,6 +106,17 @@ export default function KnowledgeBase() {
     },
   });
 
+  const deleteFileMutation = trpc.knowledge.deleteFile.useMutation({
+    onSuccess: () => {
+      toast.success("File deleted successfully");
+      utils.knowledge.listFiles.invalidate({ agentId });
+      utils.knowledge.list.invalidate({ agentId });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete file");
+    },
+  });
+
   const resetForm = () => {
     setTitle("");
     setContent("");
@@ -150,6 +162,7 @@ export default function KnowledgeBase() {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('agentId', agentId.toString());
+      formData.append('title', title.trim());
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -327,15 +340,28 @@ export default function KnowledgeBase() {
         </Card>
       </div>
 
-      {/* Knowledge Sources List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Knowledge Sources</CardTitle>
-          <CardDescription>
-            Manage the knowledge sources used to train your agent
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      {/* Knowledge Sources and Files Tabs */}
+      <Tabs defaultValue="sources" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="sources">
+            <BookOpen className="h-4 w-4 mr-2" />
+            Knowledge Sources ({sources.length})
+          </TabsTrigger>
+          <TabsTrigger value="files">
+            <FileText className="h-4 w-4 mr-2" />
+            Uploaded Files ({fileUploads.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sources">
+          <Card>
+            <CardHeader>
+              <CardTitle>Knowledge Sources</CardTitle>
+              <CardDescription>
+                Manage the knowledge sources used to train your agent
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -413,6 +439,95 @@ export default function KnowledgeBase() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="files">
+          <Card>
+            <CardHeader>
+              <CardTitle>Uploaded Files</CardTitle>
+              <CardDescription>
+                Manage files uploaded for knowledge training
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {fileUploads.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No files uploaded yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Upload PDF, DOCX, or TXT files to train your agent
+                  </p>
+                  <Button onClick={() => {
+                    setSourceType("file");
+                    setShowAddDialog(true);
+                  }}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload First File
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {fileUploads.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium truncate">{file.originalFilename}</h4>
+                          {file.status === "completed" && (
+                            <Badge variant="default" className="bg-green-500">
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                              Processed
+                            </Badge>
+                          )}
+                          {file.status === "processing" && (
+                            <Badge variant="secondary">
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              Processing
+                            </Badge>
+                          )}
+                          {file.status === "error" && (
+                            <Badge variant="destructive">
+                              <AlertCircle className="mr-1 h-3 w-3" />
+                              Error
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <span>{file.fileType.toUpperCase()}</span>
+                          <span>{(file.fileSize / 1024).toFixed(2)} KB</span>
+                          <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
+                        </div>
+                        {file.errorMessage && (
+                          <p className="text-xs text-red-500 mt-1">{file.errorMessage}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this file?")) {
+                              deleteFileMutation.mutate({ id: file.id });
+                            }
+                          }}
+                          disabled={deleteFileMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Add Source Dialog */}
       {showAddDialog && (

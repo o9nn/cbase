@@ -40,7 +40,8 @@ async function processFileAsync(
   filePath: string, 
   fileType: string, 
   agentId: number, 
-  userId: number
+  userId: number,
+  customTitle?: string
 ) {
   try {
     // Extract text from file
@@ -58,7 +59,7 @@ async function processFileAsync(
       agentId,
       userId,
       sourceType: "file",
-      title: `File Upload (${fileType.toUpperCase()})`,
+      title: customTitle || `File Upload (${fileType.toUpperCase()})`,
       content: processed.text,
       metadata: {
         fileId,
@@ -107,6 +108,15 @@ async function processFileAsync(
       status: "error",
       errorMessage: error instanceof Error ? error.message : "Unknown error",
     });
+    
+    // Clean up file on error
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error(`Failed to cleanup file ${fileId}:`, cleanupError);
+    }
   }
 }
 
@@ -155,8 +165,18 @@ async function startServer() {
           });
         }
         
+        // Verify agent ownership
+        const agent = await db.getAgentById(agentId, context.user.id);
+        if (!agent) {
+          fs.unlinkSync(req.file.path);
+          return res.status(403).json({ 
+            success: false, 
+            error: "Agent not found or access denied" 
+          });
+        }
+        
         // Create file upload record
-        const fileType = fileProcessor.getFileExtension(req.file.originalname);
+        const fileType = fileProcessor.mimeTypeToFileType(req.file.mimetype);
         const fileUpload = await db.createFileUpload({
           agentId,
           userId: context.user.id,
@@ -169,8 +189,14 @@ async function startServer() {
           status: "processing",
         });
         
+        // Get custom title from request
+        const customTitle = req.body.title?.trim() || undefined;
+        
         // Process file in background
-        processFileAsync(fileUpload.id, req.file.path, fileType, agentId, context.user.id);
+        processFileAsync(fileUpload.id, req.file.path, fileType, agentId, context.user.id, customTitle)
+          .catch((error) => {
+            console.error(`Background file processing error for file ${fileUpload.id}:`, error);
+          });
         
         res.json({ 
           success: true, 

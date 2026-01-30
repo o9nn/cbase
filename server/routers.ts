@@ -705,6 +705,11 @@ const knowledgeRouter = router({
   listFiles: protectedProcedure
     .input(z.object({ agentId: z.number() }))
     .query(async ({ ctx, input }) => {
+      // Verify agent ownership
+      const agent = await db.getAgentById(input.agentId, ctx.user.id);
+      if (!agent) {
+        throw new Error("Agent not found or access denied");
+      }
       return db.getFileUploadsByAgentId(input.agentId);
     }),
 
