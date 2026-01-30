@@ -7,6 +7,11 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { uploadSingle, uploadMultiple } from "../uploadHandler";
+import * as db from "../db";
+import * as fileProcessor from "../fileProcessor";
+import * as rag from "../rag";
+import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -27,12 +32,165 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+/**
+ * Process uploaded file asynchronously
+ */
+async function processFileAsync(
+  fileId: number, 
+  filePath: string, 
+  fileType: string, 
+  agentId: number, 
+  userId: number
+) {
+  try {
+    // Extract text from file
+    const processed = await fileProcessor.processFile(filePath, fileType);
+    
+    // Update file upload with extracted text
+    await db.updateFileUpload(fileId, {
+      extractedText: processed.text,
+      metadata: processed.metadata,
+      processedAt: new Date(),
+    });
+    
+    // Create knowledge source from extracted text
+    const source = await db.createKnowledgeSource({
+      agentId,
+      userId,
+      sourceType: "file",
+      title: `File Upload (${fileType.toUpperCase()})`,
+      content: processed.text,
+      metadata: {
+        fileId,
+        ...processed.metadata,
+      },
+      status: "pending",
+      charactersCount: processed.text.length,
+    });
+    
+    // Link file upload to knowledge source
+    await db.updateFileUpload(fileId, {
+      sourceId: source.id,
+      status: "completed",
+    });
+    
+    // Process document for RAG (chunk and embed)
+    const ragProcessed = await rag.processDocumentForRAG(processed.text);
+    
+    // Save embeddings
+    for (const chunk of ragProcessed) {
+      await db.createKnowledgeEmbedding({
+        sourceId: source.id,
+        agentId,
+        chunkText: chunk.text,
+        chunkIndex: chunk.index,
+        embedding: chunk.embedding,
+        metadata: chunk.metadata,
+      });
+    }
+    
+    // Update source status
+    await db.updateKnowledgeSource(source.id, userId, {
+      status: "trained",
+      chunksCount: ragProcessed.length,
+    });
+    
+    // Update agent's last trained timestamp
+    await db.updateAgent(agentId, userId, {
+      lastTrainedAt: new Date(),
+    });
+    
+    console.log(`✓ File processed successfully: ${fileId}`);
+  } catch (error) {
+    console.error(`✗ File processing failed: ${fileId}`, error);
+    await db.updateFileUpload(fileId, {
+      status: "error",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  // File upload endpoint
+  app.post("/api/upload", async (req, res) => {
+    uploadSingle(req, res, async (err) => {
+      if (err) {
+        return res.status(400).json({ 
+          success: false, 
+          error: err.message 
+        });
+      }
+      
+      if (!req.file) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "No file uploaded" 
+        });
+      }
+      
+      try {
+        // Get user from session (assuming context has user info)
+        const context = await createContext({ req, res, info: {} as any });
+        if (!context.user) {
+          // Clean up uploaded file
+          fs.unlinkSync(req.file.path);
+          return res.status(401).json({ 
+            success: false, 
+            error: "Unauthorized" 
+          });
+        }
+        
+        const agentId = parseInt(req.body.agentId || "0");
+        if (!agentId) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({ 
+            success: false, 
+            error: "Agent ID is required" 
+          });
+        }
+        
+        // Create file upload record
+        const fileType = fileProcessor.getFileExtension(req.file.originalname);
+        const fileUpload = await db.createFileUpload({
+          agentId,
+          userId: context.user.id,
+          filename: req.file.filename,
+          originalFilename: req.file.originalname,
+          fileType: fileType as any,
+          mimeType: req.file.mimetype,
+          fileSize: req.file.size,
+          localPath: req.file.path,
+          status: "processing",
+        });
+        
+        // Process file in background
+        processFileAsync(fileUpload.id, req.file.path, fileType, agentId, context.user.id);
+        
+        res.json({ 
+          success: true, 
+          fileId: fileUpload.id,
+          filename: req.file.originalname,
+          fileSize: req.file.size 
+        });
+      } catch (error) {
+        // Clean up uploaded file on error
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({ 
+          success: false, 
+          error: error instanceof Error ? error.message : "Unknown error" 
+        });
+      }
+    });
+  });
+  
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

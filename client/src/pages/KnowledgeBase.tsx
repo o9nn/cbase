@@ -58,6 +58,8 @@ export default function KnowledgeBase() {
   const [content, setContent] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const createMutation = trpc.knowledge.create.useMutation({
     onSuccess: () => {
@@ -108,9 +110,76 @@ export default function KnowledgeBase() {
     setContent("");
     setSourceUrl("");
     setSourceType("text");
+    setSelectedFile(null);
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      toast.error("Please select a file");
+      return;
+    }
+
+    if (!title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (selectedFile.size > maxSize) {
+      toast.error("File size must be less than 10MB");
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'text/plain',
+      'text/markdown'
+    ];
+    
+    if (!allowedTypes.includes(selectedFile.type)) {
+      toast.error("Invalid file type. Allowed: PDF, DOCX, DOC, TXT, MD");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('agentId', agentId.toString());
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`File uploaded successfully! Processing ${data.filename}...`);
+        utils.knowledge.list.invalidate({ agentId });
+        setShowAddDialog(false);
+        resetForm();
+      } else {
+        toast.error(data.error || "Failed to upload file");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to upload file");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleAddSource = () => {
+    // Handle file upload separately
+    if (sourceType === "file") {
+      handleFileUpload();
+      return;
+    }
+
     if (!title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -300,10 +369,10 @@ export default function KnowledgeBase() {
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{source.sourceType.toUpperCase()}</span>
-                      {source.charactersCount > 0 && (
-                        <span>{source.charactersCount.toLocaleString()} characters</span>
+                      {(source.charactersCount ?? 0) > 0 && (
+                        <span>{(source.charactersCount ?? 0).toLocaleString()} characters</span>
                       )}
-                      {source.chunksCount > 0 && (
+                      {(source.chunksCount ?? 0) > 0 && (
                         <span>{source.chunksCount} chunks</span>
                       )}
                       <span>{new Date(source.createdAt).toLocaleDateString()}</span>
@@ -391,6 +460,43 @@ export default function KnowledgeBase() {
                 </div>
               )}
 
+              {sourceType === "file" && (
+                <div>
+                  <Label>File</Label>
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+                    <input
+                      type="file"
+                      id="file-upload"
+                      className="hidden"
+                      accept=".pdf,.docx,.doc,.txt,.md"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setSelectedFile(file);
+                          if (!title) {
+                            setTitle(file.name);
+                          }
+                        }
+                      }}
+                    />
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm font-medium">
+                        {selectedFile ? selectedFile.name : "Click to upload or drag and drop"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF, DOCX, DOC, TXT, MD (max 10MB)
+                      </p>
+                      {selectedFile && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Size: {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {(sourceType === "text" || sourceType === "qa") && (
                 <div>
                   <Label>Content</Label>
@@ -418,12 +524,12 @@ export default function KnowledgeBase() {
               </Button>
               <Button
                 onClick={handleAddSource}
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || isUploading}
               >
-                {createMutation.isPending ? (
+                {(createMutation.isPending || isUploading) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adding...
+                    {isUploading ? 'Uploading...' : 'Adding...'}
                   </>
                 ) : (
                   <>Add Source</>

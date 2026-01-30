@@ -205,3 +205,29 @@ export const trainingJobs = mysqlTable("trainingJobs", {
 
 export type TrainingJob = typeof trainingJobs.$inferSelect;
 export type InsertTrainingJob = typeof trainingJobs.$inferInsert;
+
+/**
+ * File uploads - tracks uploaded files for knowledge sources
+ */
+export const fileUploads = mysqlTable("fileUploads", {
+  id: int("id").autoincrement().primaryKey(),
+  agentId: int("agentId").notNull(),
+  userId: int("userId").notNull(),
+  sourceId: int("sourceId"), // Links to knowledgeSources after processing
+  filename: varchar("filename", { length: 255 }).notNull(),
+  originalFilename: varchar("originalFilename", { length: 255 }).notNull(),
+  fileType: mysqlEnum("fileType", ["pdf", "docx", "doc", "txt", "md"]).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  fileSize: int("fileSize").notNull(), // in bytes
+  s3Key: varchar("s3Key", { length: 500 }), // S3 object key
+  localPath: varchar("localPath", { length: 500 }), // Local file path if not using S3
+  status: mysqlEnum("status", ["uploading", "processing", "completed", "error"]).default("uploading").notNull(),
+  errorMessage: text("errorMessage"),
+  extractedText: text("extractedText"), // Extracted text from file
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  processedAt: timestamp("processedAt"),
+});
+
+export type FileUpload = typeof fileUploads.$inferSelect;
+export type InsertFileUpload = typeof fileUploads.$inferInsert;
