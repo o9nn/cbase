@@ -33,7 +33,8 @@ import {
   Settings, 
   Bell,
   Zap,
-  ChevronRight
+  ChevronRight,
+  BookOpen
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
@@ -50,6 +51,7 @@ const mainMenuItems = [
 
 const agentMenuItems = [
   { icon: PlayCircle, label: "Playground", path: "playground" },
+  { icon: BookOpen, label: "Knowledge", path: "knowledge" },
   { icon: MessageSquare, label: "Chat Logs", path: "chat-logs" },
   { icon: BarChart3, label: "Analytics", path: "analytics" },
 ];

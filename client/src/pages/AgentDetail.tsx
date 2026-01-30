@@ -14,7 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Bot, Save, RefreshCw, PlayCircle, MessageSquare, BarChart3, Trash2, Plus, X } from "lucide-react";
+import { ArrowLeft, Bot, Save, RefreshCw, PlayCircle, MessageSquare, BarChart3, Trash2, Plus, X, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -152,6 +152,10 @@ export default function AgentDetail() {
         <Button variant="outline" size="sm" onClick={() => setLocation(`/agents/${agentId}/playground`)}>
           <PlayCircle className="w-4 h-4 mr-2" />
           Playground
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setLocation(`/agents/${agentId}/knowledge`)}>
+          <BookOpen className="w-4 h-4 mr-2" />
+          Knowledge
         </Button>
         <Button variant="outline" size="sm" onClick={() => setLocation(`/agents/${agentId}/chat-logs`)}>
           <MessageSquare className="w-4 h-4 mr-2" />

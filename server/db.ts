@@ -8,7 +8,10 @@ import {
   accountSettings, InsertAccountSettings, AccountSettings,
   analyticsEvents, InsertAnalyticsEvent,
   exportedFiles, InsertExportedFile,
-  alerts, InsertAlert, Alert
+  alerts, InsertAlert, Alert,
+  knowledgeSources, InsertKnowledgeSource, KnowledgeSource,
+  knowledgeEmbeddings, InsertKnowledgeEmbedding, KnowledgeEmbedding,
+  trainingJobs, InsertTrainingJob, TrainingJob
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
@@ -532,4 +535,144 @@ export async function checkRetrainingAlert(userId: number): Promise<void> {
       }
     }
   }
+}
+
+// ============ KNOWLEDGE SOURCE FUNCTIONS ============
+
+export async function createKnowledgeSource(data: Omit<InsertKnowledgeSource, 'id' | 'createdAt' | 'updatedAt'>): Promise<KnowledgeSource> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(knowledgeSources).values(data);
+  
+  const [source] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, Number(result[0].insertId)));
+  return source;
+}
+
+export async function getKnowledgeSourcesByAgentId(agentId: number): Promise<KnowledgeSource[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(knowledgeSources)
+    .where(eq(knowledgeSources.agentId, agentId))
+    .orderBy(desc(knowledgeSources.createdAt));
+}
+
+export async function getKnowledgeSourceById(id: number, userId: number): Promise<KnowledgeSource | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const [source] = await db.select().from(knowledgeSources)
+    .where(and(eq(knowledgeSources.id, id), eq(knowledgeSources.userId, userId)));
+  return source;
+}
+
+export async function updateKnowledgeSource(id: number, userId: number, data: Partial<InsertKnowledgeSource>): Promise<KnowledgeSource | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  await db.update(knowledgeSources)
+    .set(data)
+    .where(and(eq(knowledgeSources.id, id), eq(knowledgeSources.userId, userId)));
+  
+  return getKnowledgeSourceById(id, userId);
+}
+
+export async function deleteKnowledgeSource(id: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  // Delete associated embeddings first
+  await db.delete(knowledgeEmbeddings).where(eq(knowledgeEmbeddings.sourceId, id));
+  
+  // Delete the source
+  await db.delete(knowledgeSources)
+    .where(and(eq(knowledgeSources.id, id), eq(knowledgeSources.userId, userId)));
+  
+  return true;
+}
+
+// ============ KNOWLEDGE EMBEDDING FUNCTIONS ============
+
+export async function createKnowledgeEmbedding(data: Omit<InsertKnowledgeEmbedding, 'id' | 'createdAt'>): Promise<KnowledgeEmbedding> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(knowledgeEmbeddings).values(data);
+  
+  const [embedding] = await db.select().from(knowledgeEmbeddings).where(eq(knowledgeEmbeddings.id, Number(result[0].insertId)));
+  return embedding;
+}
+
+export async function getEmbeddingsByAgentId(agentId: number): Promise<KnowledgeEmbedding[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(knowledgeEmbeddings)
+    .where(eq(knowledgeEmbeddings.agentId, agentId));
+}
+
+export async function getEmbeddingsBySourceId(sourceId: number): Promise<KnowledgeEmbedding[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(knowledgeEmbeddings)
+    .where(eq(knowledgeEmbeddings.sourceId, sourceId));
+}
+
+export async function deleteEmbeddingsBySourceId(sourceId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  await db.delete(knowledgeEmbeddings).where(eq(knowledgeEmbeddings.sourceId, sourceId));
+  return true;
+}
+
+// ============ TRAINING JOB FUNCTIONS ============
+
+export async function createTrainingJob(data: Omit<InsertTrainingJob, 'id' | 'createdAt'>): Promise<TrainingJob> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(trainingJobs).values(data);
+  
+  const [job] = await db.select().from(trainingJobs).where(eq(trainingJobs.id, Number(result[0].insertId)));
+  return job;
+}
+
+export async function getTrainingJobsByAgentId(agentId: number): Promise<TrainingJob[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(trainingJobs)
+    .where(eq(trainingJobs.agentId, agentId))
+    .orderBy(desc(trainingJobs.createdAt));
+}
+
+export async function getTrainingJobById(id: number): Promise<TrainingJob | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const [job] = await db.select().from(trainingJobs).where(eq(trainingJobs.id, id));
+  return job;
+}
+
+export async function updateTrainingJob(id: number, data: Partial<InsertTrainingJob>): Promise<TrainingJob | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  await db.update(trainingJobs)
+    .set(data)
+    .where(eq(trainingJobs.id, id));
+  
+  return getTrainingJobById(id);
+}
+
+export async function getPendingTrainingJobs(): Promise<TrainingJob[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(trainingJobs)
+    .where(eq(trainingJobs.status, "queued"))
+    .orderBy(trainingJobs.createdAt);
 }

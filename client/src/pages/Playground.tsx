@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Bot, Send, User, RefreshCw, Settings2, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Bot, Send, User, RefreshCw, Settings2, Sparkles, Loader2, BookOpen } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ export default function Playground() {
   const [isLoading, setIsLoading] = useState(false);
   const [tempSystemPrompt, setTempSystemPrompt] = useState("");
   const [tempTemperature, setTempTemperature] = useState(0.7);
+  const [useRAG, setUseRAG] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: agent, isLoading: agentLoading } = trpc.agent.get.useQuery({ id: agentId });
@@ -105,6 +107,7 @@ export default function Playground() {
       agentId,
       sessionId: sessionId || undefined,
       message: inputValue,
+      useRAG,
     });
   };
 
@@ -198,6 +201,18 @@ export default function Playground() {
                 </SheetDescription>
               </SheetHeader>
               <div className="space-y-6 mt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>RAG Knowledge Retrieval</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Use trained knowledge sources to enhance responses
+                    </p>
+                  </div>
+                  <Switch
+                    checked={useRAG}
+                    onCheckedChange={setUseRAG}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>System Prompt</Label>
                   <Textarea
