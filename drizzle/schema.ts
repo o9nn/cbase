@@ -145,3 +145,63 @@ export const alerts = mysqlTable("alerts", {
 
 export type Alert = typeof alerts.$inferSelect;
 export type InsertAlert = typeof alerts.$inferInsert;
+
+/**
+ * Knowledge sources - stores training data for RAG system
+ */
+export const knowledgeSources = mysqlTable("knowledgeSources", {
+  id: int("id").autoincrement().primaryKey(),
+  agentId: int("agentId").notNull(),
+  userId: int("userId").notNull(),
+  sourceType: mysqlEnum("sourceType", ["text", "file", "url", "qa"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content"),
+  sourceUrl: text("sourceUrl"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  status: mysqlEnum("status", ["pending", "processing", "trained", "error"]).default("pending").notNull(),
+  errorMessage: text("errorMessage"),
+  charactersCount: int("charactersCount").default(0),
+  chunksCount: int("chunksCount").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type KnowledgeSource = typeof knowledgeSources.$inferSelect;
+export type InsertKnowledgeSource = typeof knowledgeSources.$inferInsert;
+
+/**
+ * Knowledge embeddings - stores vector embeddings for semantic search
+ */
+export const knowledgeEmbeddings = mysqlTable("knowledgeEmbeddings", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceId: int("sourceId").notNull(),
+  agentId: int("agentId").notNull(),
+  chunkText: text("chunkText").notNull(),
+  chunkIndex: int("chunkIndex").notNull(),
+  embedding: json("embedding").$type<number[]>(),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type KnowledgeEmbedding = typeof knowledgeEmbeddings.$inferSelect;
+export type InsertKnowledgeEmbedding = typeof knowledgeEmbeddings.$inferInsert;
+
+/**
+ * Training jobs - tracks auto-training and retraining status
+ */
+export const trainingJobs = mysqlTable("trainingJobs", {
+  id: int("id").autoincrement().primaryKey(),
+  agentId: int("agentId").notNull(),
+  userId: int("userId").notNull(),
+  jobType: mysqlEnum("jobType", ["initial", "retrain", "incremental"]).notNull(),
+  status: mysqlEnum("status", ["queued", "processing", "completed", "failed"]).default("queued").notNull(),
+  sourcesProcessed: int("sourcesProcessed").default(0),
+  sourcesTotal: int("sourcesTotal").default(0),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TrainingJob = typeof trainingJobs.$inferSelect;
+export type InsertTrainingJob = typeof trainingJobs.$inferInsert;

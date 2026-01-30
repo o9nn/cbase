@@ -8,6 +8,7 @@ import { storagePut } from "./storage";
 import { notifyOwner } from "./_core/notification";
 import { nanoid } from "nanoid";
 import * as db from "./db";
+import * as rag from "./rag";
 
 // ============ AGENT ROUTER ============
 const agentRouter = router({
@@ -136,6 +137,7 @@ const chatRouter = router({
       agentId: z.number(),
       sessionId: z.number().optional(),
       message: z.string(),
+      useRAG: z.boolean().optional().default(true),
     }))
     .mutation(async ({ ctx, input }) => {
       // Get or create session
@@ -168,8 +170,54 @@ const chatRouter = router({
       // Build messages for LLM
       const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
       
-      if (agent.systemPrompt) {
-        messages.push({ role: "system", content: agent.systemPrompt });
+      // RAG retrieval if enabled and knowledge sources exist
+      let ragContext = "";
+      if (input.useRAG) {
+        try {
+          // Get all embeddings for this agent
+          const embeddings = await db.getEmbeddingsByAgentId(input.agentId);
+          
+          if (embeddings.length > 0) {
+            // Generate embedding for the user's query
+            const queryEmbedding = await rag.generateEmbedding(input.message);
+            
+            // Find relevant chunks
+            const relevantChunks = rag.findRelevantChunks(
+              queryEmbedding,
+              embeddings.map(e => ({
+                id: e.id,
+                embedding: e.embedding || [],
+                text: e.chunkText,
+                metadata: e.metadata,
+              })),
+              5, // top 5 chunks
+              0.7 // minimum similarity threshold
+            );
+            
+            // Build RAG context
+            if (relevantChunks.length > 0) {
+              ragContext = rag.buildRAGContext(relevantChunks, 3000);
+            }
+          }
+        } catch (error) {
+          console.error("RAG retrieval error:", error);
+          // Continue without RAG if it fails
+        }
+      }
+      
+      // Add system prompt with optional RAG context
+      if (agent.systemPrompt || ragContext) {
+        let systemContent = "";
+        
+        if (ragContext) {
+          systemContent = ragContext + "\n\n";
+        }
+        
+        if (agent.systemPrompt) {
+          systemContent += agent.systemPrompt;
+        }
+        
+        messages.push({ role: "system", content: systemContent });
       }
 
       // Add conversation history (last 10 messages)
@@ -202,6 +250,10 @@ const chatRouter = router({
         aiRequests: 1,
         tokensUsed: response.usage?.total_tokens,
         latencyMs,
+        metadata: {
+          usedRAG: input.useRAG && ragContext.length > 0,
+          ragChunksCount: ragContext.length > 0 ? 5 : 0,
+        },
       });
 
       // Increment credits
@@ -219,6 +271,7 @@ const chatRouter = router({
           signalScore,
           tokensUsed: response.usage?.total_tokens,
           latencyMs,
+          usedRAG: input.useRAG && ragContext.length > 0,
         },
       });
 
@@ -453,6 +506,202 @@ const exportRouter = router({
   }),
 });
 
+// ============ RAG/KNOWLEDGE ROUTER ============
+const knowledgeRouter = router({
+  // List knowledge sources for an agent
+  list: protectedProcedure
+    .input(z.object({ agentId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return db.getKnowledgeSourcesByAgentId(input.agentId);
+    }),
+
+  // Get a specific knowledge source
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return db.getKnowledgeSourceById(input.id, ctx.user.id);
+    }),
+
+  // Create a new knowledge source
+  create: protectedProcedure
+    .input(z.object({
+      agentId: z.number(),
+      sourceType: z.enum(["text", "file", "url", "qa"]),
+      title: z.string().min(1).max(255),
+      content: z.string().optional(),
+      sourceUrl: z.string().optional(),
+      metadata: z.record(z.unknown()).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const source = await db.createKnowledgeSource({
+        agentId: input.agentId,
+        userId: ctx.user.id,
+        sourceType: input.sourceType,
+        title: input.title,
+        content: input.content,
+        sourceUrl: input.sourceUrl,
+        metadata: input.metadata,
+        status: "pending",
+        charactersCount: input.content?.length || 0,
+      });
+
+      // Queue training job
+      await db.createTrainingJob({
+        agentId: input.agentId,
+        userId: ctx.user.id,
+        jobType: "incremental",
+        status: "queued",
+        sourcesTotal: 1,
+      });
+
+      return source;
+    }),
+
+  // Process a knowledge source (chunk and embed)
+  process: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const source = await db.getKnowledgeSourceById(input.sourceId, ctx.user.id);
+      if (!source) {
+        throw new Error("Knowledge source not found");
+      }
+
+      if (!source.content) {
+        throw new Error("Knowledge source has no content to process");
+      }
+
+      // Update status to processing
+      await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+        status: "processing",
+      });
+
+      try {
+        // Process document: chunk and embed
+        const processed = await rag.processDocumentForRAG(source.content);
+
+        // Delete old embeddings for this source
+        await db.deleteEmbeddingsBySourceId(input.sourceId);
+
+        // Save new embeddings
+        for (const chunk of processed) {
+          await db.createKnowledgeEmbedding({
+            sourceId: input.sourceId,
+            agentId: source.agentId,
+            chunkText: chunk.text,
+            chunkIndex: chunk.index,
+            embedding: chunk.embedding,
+            metadata: chunk.metadata,
+          });
+        }
+
+        // Update source status
+        await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+          status: "trained",
+          chunksCount: processed.length,
+        });
+
+        // Update agent's last trained timestamp
+        await db.updateAgent(source.agentId, ctx.user.id, {
+          lastTrainedAt: new Date(),
+        });
+
+        return { success: true, chunksCount: processed.length };
+      } catch (error) {
+        await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+          status: "error",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+        });
+        throw error;
+      }
+    }),
+
+  // Delete a knowledge source
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteKnowledgeSource(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  // Get training jobs for an agent
+  getTrainingJobs: protectedProcedure
+    .input(z.object({ agentId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return db.getTrainingJobsByAgentId(input.agentId);
+    }),
+
+  // Trigger training for an agent
+  train: protectedProcedure
+    .input(z.object({ agentId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      // Get all pending sources for this agent
+      const sources = await db.getKnowledgeSourcesByAgentId(input.agentId);
+      const pendingSources = sources.filter(s => s.status === "pending");
+
+      // Create training job
+      const job = await db.createTrainingJob({
+        agentId: input.agentId,
+        userId: ctx.user.id,
+        jobType: "retrain",
+        status: "queued",
+        sourcesTotal: pendingSources.length,
+      });
+
+      // Process each pending source
+      for (const source of pendingSources) {
+        if (source.content) {
+          try {
+            await db.updateKnowledgeSource(source.id, ctx.user.id, {
+              status: "processing",
+            });
+
+            const processed = await rag.processDocumentForRAG(source.content);
+            await db.deleteEmbeddingsBySourceId(source.id);
+
+            for (const chunk of processed) {
+              await db.createKnowledgeEmbedding({
+                sourceId: source.id,
+                agentId: source.agentId,
+                chunkText: chunk.text,
+                chunkIndex: chunk.index,
+                embedding: chunk.embedding,
+                metadata: chunk.metadata,
+              });
+            }
+
+            await db.updateKnowledgeSource(source.id, ctx.user.id, {
+              status: "trained",
+              chunksCount: processed.length,
+            });
+
+            await db.updateTrainingJob(job.id, {
+              sourcesProcessed: (job.sourcesProcessed || 0) + 1,
+            });
+          } catch (error) {
+            await db.updateKnowledgeSource(source.id, ctx.user.id, {
+              status: "error",
+              errorMessage: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        }
+      }
+
+      // Mark job as completed
+      await db.updateTrainingJob(job.id, {
+        status: "completed",
+        completedAt: new Date(),
+      });
+
+      // Update agent
+      await db.updateAgent(input.agentId, ctx.user.id, {
+        lastTrainedAt: new Date(),
+        status: "active",
+      });
+
+      return { success: true, jobId: job.id };
+    }),
+});
+
 // ============ MAIN ROUTER ============
 export const appRouter = router({
   system: systemRouter,
@@ -470,6 +719,7 @@ export const appRouter = router({
   settings: settingsRouter,
   alerts: alertsRouter,
   export: exportRouter,
+  knowledge: knowledgeRouter,
 });
 
 export type AppRouter = typeof appRouter;
