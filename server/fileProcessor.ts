@@ -18,27 +18,21 @@ async function sanitizeFilePath(filePath: string): Promise<string> {
     ? path.resolve(uploadsDirEnv)
     : path.resolve(process.cwd(), 'uploads');
 
-  // If the provided path is absolute, normalize it; otherwise, resolve it against the base directory.
-  const resolvedPath = path.isAbsolute(filePath)
-    ? path.resolve(filePath)
-    : path.resolve(baseUploadsDir, filePath);
+  // Always resolve the provided path against the base uploads directory.
+  // This avoids trusting absolute paths that may be user-controlled.
+  const resolvedPath = path.resolve(baseUploadsDir, filePath);
 
-  // Resolve any symbolic links and get the canonical path.
+  // Resolve any symbolic links and get the canonical paths.
+  const realBase = await fs.promises.realpath(baseUploadsDir);
   const realPath = await fs.promises.realpath(resolvedPath);
 
   // Ensure the final path is within the uploads directory.
-  const normalizedBase = baseUploadsDir.endsWith(path.sep)
-    ? baseUploadsDir
-    : baseUploadsDir + path.sep;
-  const normalizedRealPath = realPath.endsWith(path.sep)
-    ? realPath
-    : realPath + path.sep;
+  const baseWithSep = realBase.endsWith(path.sep) ? realBase : realBase + path.sep;
 
-  if (!normalizedRealPath.startsWith(normalizedBase)) {
+  if (realPath !== realBase && !realPath.startsWith(baseWithSep)) {
     throw new Error('Access to files outside the uploads directory is not allowed');
   }
 
-  // Remove the extra trailing separator added above.
   return realPath;
 }
 
