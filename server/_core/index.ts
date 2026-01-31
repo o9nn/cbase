@@ -20,10 +20,11 @@ function safeUnlinkUpload(filePath: string | undefined) {
   if (!filePath) return;
 
   try {
-    const root = path.resolve(UPLOAD_ROOT);
-    const absoluteFilePath = path.resolve(filePath);
+    const root = fs.realpathSync(path.resolve(UPLOAD_ROOT));
+    const resolvedPath = path.resolve(root, filePath);
+    const absoluteFilePath = fs.realpathSync(resolvedPath);
 
-    if (!absoluteFilePath.startsWith(root + path.sep) && absoluteFilePath !== root) {
+    if (absoluteFilePath !== root && !absoluteFilePath.startsWith(root + path.sep)) {
       // Do not delete files outside the upload root
       return;
     }
