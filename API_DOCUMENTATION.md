@@ -999,6 +999,200 @@ print(message["content"])
 
 ---
 
+## 🌐 URL Scraping & Web Crawling API
+
+### Add URL Source
+
+Add a URL to crawl and train the agent with web content.
+
+**Endpoint**: `knowledge.addUrlSource`  
+**Method**: `POST`  
+**Auth**: Required
+
+#### Request Body
+```typescript
+{
+  agentId: number;
+  url: string;              // URL to crawl
+  title?: string;           // Optional title
+  crawlDepth?: number;      // 1-3, default 1
+  maxPages?: number;        // 5-50, default 10
+}
+```
+
+#### Response
+```typescript
+{
+  source: {
+    id: number;
+    agentId: number;
+    sourceType: "url";
+    title: string;
+    sourceUrl: string;
+    status: "pending";
+    // ... other fields
+  };
+  crawlJob: {
+    id: number;
+    sourceId: number;
+    status: "queued";
+    // ... other fields
+  };
+}
+```
+
+#### Example
+```typescript
+const result = await client.knowledge.addUrlSource.mutate({
+  agentId: 1,
+  url: "https://example.com/docs",
+  title: "Example Documentation",
+  crawlDepth: 2,
+  maxPages: 20
+});
+```
+
+### Process URL Source
+
+Start crawling and processing a URL source.
+
+**Endpoint**: `knowledge.processUrlSource`  
+**Method**: `POST`  
+**Auth**: Required
+
+#### Request Body
+```typescript
+{
+  sourceId: number;
+}
+```
+
+#### Response
+```typescript
+{
+  success: true;
+  chunksCount: number;      // Number of chunks created
+  pagesProcessed: number;   // Number of pages crawled
+}
+```
+
+#### Example
+```typescript
+const result = await client.knowledge.processUrlSource.mutate({
+  sourceId: 123
+});
+
+console.log(`Processed ${result.pagesProcessed} pages`);
+console.log(`Created ${result.chunksCount} chunks`);
+```
+
+### Get Crawl Job Status
+
+Get the status of a web crawl job.
+
+**Endpoint**: `knowledge.getCrawlJob`  
+**Method**: `GET`  
+**Auth**: Required
+
+#### Request Parameters
+```typescript
+{
+  sourceId: number;
+}
+```
+
+#### Response
+```typescript
+{
+  id: number;
+  sourceId: number;
+  agentId: number;
+  baseUrl: string;
+  crawlDepth: number;
+  maxPages: number;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  urlsProcessed: number;
+  urlsTotal: number;
+  urlsDiscovered: string[];
+  pagesExtracted: number;
+  errorMessage?: string;
+  startedAt?: Date;
+  completedAt?: Date;
+}
+```
+
+#### Example
+```typescript
+const job = await client.knowledge.getCrawlJob.query({
+  sourceId: 123
+});
+
+console.log(`Status: ${job.status}`);
+console.log(`Progress: ${job.urlsProcessed}/${job.urlsTotal}`);
+```
+
+### List Crawl Jobs
+
+List all crawl jobs for an agent.
+
+**Endpoint**: `knowledge.listCrawlJobs`  
+**Method**: `GET`  
+**Auth**: Required
+
+#### Request Parameters
+```typescript
+{
+  agentId: number;
+}
+```
+
+#### Response
+```typescript
+Array<{
+  id: number;
+  sourceId: number;
+  agentId: number;
+  baseUrl: string;
+  status: string;
+  urlsProcessed: number;
+  urlsTotal: number;
+  // ... other fields
+}>
+```
+
+#### Example
+```typescript
+const jobs = await client.knowledge.listCrawlJobs.query({
+  agentId: 1
+});
+
+jobs.forEach(job => {
+  console.log(`${job.baseUrl}: ${job.status}`);
+});
+```
+
+### URL Crawling Features
+
+#### Security
+- ✅ **SSRF Protection**: Blocks localhost and private IPs
+- ✅ **URL Validation**: Validates URL format before crawling
+- ✅ **Robots.txt**: Respects website crawl rules
+- ✅ **Same Domain**: Only crawls pages from the same domain
+- ✅ **Rate Limiting**: 1 second delay between requests
+
+#### Content Processing
+- ✅ **Smart Extraction**: Removes navigation, ads, headers, footers
+- ✅ **HTML to Markdown**: Clean Markdown conversion
+- ✅ **Metadata**: Extracts title, description, keywords
+- ✅ **Link Discovery**: Finds and follows links up to depth limit
+
+#### Configuration
+- **Crawl Depth**: 1-3 levels deep
+- **Max Pages**: 5-50 pages per crawl
+- **Automatic RAG**: Crawled content automatically processed for semantic search
+
+---
+
 ## 🔒 Security Best Practices
 
 ### API Key Management
@@ -1043,6 +1237,21 @@ When reporting API issues, include:
 
 ## 📝 Changelog
 
+### Version 2.2.0 (2026-01-31)
+- ✅ Added URL scraping & web crawling endpoints
+- ✅ Implemented addUrlSource endpoint
+- ✅ Implemented processUrlSource endpoint
+- ✅ Added getCrawlJob status tracking
+- ✅ Added listCrawlJobs endpoint
+- ✅ SSRF protection and security features
+- ✅ Robots.txt compliance
+- ✅ HTML to Markdown conversion
+
+### Version 2.1.0 (2026-01-30)
+- ✅ Added file upload endpoints
+- ✅ PDF, DOCX, DOC, TXT, MD support
+- ✅ File processing and extraction
+
 ### Version 2.0.0 (2026-01-30)
 - ✅ Added RAG knowledge system endpoints
 - ✅ Enhanced chat API with RAG support
@@ -1059,4 +1268,4 @@ When reporting API issues, include:
 
 ---
 
-*API Documentation v2.0.0 - Last Updated: January 30, 2026*
+*API Documentation v2.2.0 - Last Updated: January 31, 2026*

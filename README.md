@@ -238,9 +238,19 @@ docker-compose down
   - File management UI with status tracking
   - Secure file handling with authorization
 
+- **Phase 9**: URL scraping & web crawling ✅
+  - Single URL and multi-page crawling
+  - Configurable crawl depth (1-3 levels)
+  - Max pages limit (5-50 pages)
+  - HTML content extraction with cheerio
+  - HTML to Markdown conversion
+  - Robots.txt compliance
+  - Same-domain restriction
+  - SSRF protection and URL validation
+  - Automatic RAG processing of crawled content
+
 ### 🚧 In Progress (Q2 2026)
 
-- **Phase 9**: URL scraping & web crawling
 - Enhanced testing infrastructure
 - Performance optimization
 
@@ -467,35 +477,47 @@ Built with amazing open-source technologies:
 
 ## 📈 Project Status
 
-**Current Version**: 2.1.0  
+**Current Version**: 2.2.0  
 **Status**: Production Ready ✅  
-**Last Updated**: January 30, 2026
+**Last Updated**: January 31, 2026
 
 ### Statistics
 
-- **90%** feature complete (Phase 8 completed)
-- **165+** features implemented
-- **14** API endpoints (3 new file upload endpoints)
+- **93%** feature complete (Phases 8 & 9 completed)
+- **180+** features implemented
+- **18** API endpoints (4 new URL crawling endpoints added in Phase 9)
 - **8** major pages
-- **4** database tables (added fileUploads)
-- **2,200+** lines of code added for file processing
-- **7** major pages
+- **5** database tables (added fileUploads, webCrawlJobs)
+- **3,600+** lines of code added for file processing and URL crawling
 - **3** database tables for RAG
-- **1,775** lines of code added in RAG implementation
+- **1,775** lines of code added in RAG implementation (Phase 7)
+
 
 ---
 
-## 🎉 What's New in v2.1.0
+## 🎉 What's New in v2.2.0
 
-### Major Features (Phase 8)
+### Major Features (Phase 9)
+✨ **URL Scraping & Web Crawling**
+  - Crawl single URLs or entire websites
+  - Configurable crawl depth (1-3 levels deep)
+  - Max pages limit (5-50 pages)
+  - Smart content extraction from HTML
+  - HTML to Markdown conversion
+  - Robots.txt compliance
+  - Same-domain restriction for security
+  - SSRF protection with URL validation
+  - Automatic RAG processing of crawled content
+  - Real-time crawl job status tracking
+
+### Previous Features (v2.1.0 - Phase 8)
 ✨ **File Upload & Processing**
   - Upload PDF, DOCX, DOC, TXT, MD files
   - Automatic text extraction
   - Seamless RAG integration
   - File management UI with status tracking
-  - Secure file handling with authorization
 
-### Previous Features (v2.0.0)
+### Core Features (v2.0.0)
 ✨ Complete RAG knowledge training system  
 ✨ Advanced vector search with semantic similarity  
 ✨ Batch training capabilities  
@@ -505,6 +527,9 @@ Built with amazing open-source technologies:
 ✨ Dark mode UI with purple/indigo theme
 
 ### Improvements
+🚀 Enhanced web content processing pipeline
+🚀 Improved security with SSRF protection
+🚀 Better error handling for network operations
 🚀 Enhanced file processing pipeline
 🚀 Improved security with ownership verification
 🚀 Better error handling for file operations
@@ -518,8 +543,6 @@ Built with amazing open-source technologies:
 
 ## 🔮 Coming Soon
 
-- 📁 File upload support (PDF, DOCX, TXT)
-- 🌐 URL scraping and web crawling
 - 📅 Scheduled auto-retraining
 - 🌍 Multi-language support
 - 🏢 Team collaboration features

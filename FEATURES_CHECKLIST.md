@@ -94,11 +94,16 @@
 - [x] Source status tracking
 - [x] Character count display
 - [x] Chunk count display
-- [ ] File upload (PDF, DOCX, TXT)
-- [ ] URL/website scraping
+- [x] File upload (PDF, DOCX, TXT, MD, DOC) ✨ Phase 8
+- [x] URL/website scraping ✨ Phase 9
+- [x] Web crawling with depth limits ✨ Phase 9
+- [x] Robots.txt compliance ✨ Phase 9
+- [x] Same-domain restriction ✨ Phase 9
+- [x] HTML to Markdown conversion ✨ Phase 9
 - [ ] Bulk import from CSV
 - [ ] Source categorization
 - [ ] Source tagging
+- [ ] Sitemap parsing
 
 ### Text Processing
 - [x] Text chunking (1000 chars, 200 overlap)

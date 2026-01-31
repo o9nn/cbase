@@ -231,3 +231,30 @@ export const fileUploads = mysqlTable("fileUploads", {
 
 export type FileUpload = typeof fileUploads.$inferSelect;
 export type InsertFileUpload = typeof fileUploads.$inferInsert;
+
+/**
+ * Web crawl jobs - tracks web scraping and crawling jobs
+ */
+export const webCrawlJobs = mysqlTable("webCrawlJobs", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceId: int("sourceId").notNull(), // Links to knowledgeSources
+  agentId: int("agentId").notNull(),
+  userId: int("userId").notNull(),
+  baseUrl: text("baseUrl").notNull(), // Starting URL
+  crawlDepth: int("crawlDepth").default(1).notNull(), // Max depth to crawl
+  maxPages: int("maxPages").default(10).notNull(), // Max pages to crawl
+  status: mysqlEnum("status", ["queued", "running", "completed", "failed", "cancelled"]).default("queued").notNull(),
+  urlsProcessed: int("urlsProcessed").default(0),
+  urlsTotal: int("urlsTotal").default(0),
+  urlsDiscovered: json("urlsDiscovered").$type<string[]>(), // Array of discovered URLs
+  pagesExtracted: int("pagesExtracted").default(0),
+  errorMessage: text("errorMessage"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WebCrawlJob = typeof webCrawlJobs.$inferSelect;
+export type InsertWebCrawlJob = typeof webCrawlJobs.$inferInsert;

@@ -58,6 +58,8 @@ export default function KnowledgeBase() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [crawlDepth, setCrawlDepth] = useState(1);
+  const [maxPages, setMaxPages] = useState(10);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -117,10 +119,38 @@ export default function KnowledgeBase() {
     },
   });
 
+  const addUrlSourceMutation = trpc.knowledge.addUrlSource.useMutation({
+    onSuccess: (data) => {
+      toast.success("URL source added successfully");
+      utils.knowledge.list.invalidate({ agentId });
+      setShowAddDialog(false);
+      resetForm();
+      // Automatically start processing
+      processUrlSourceMutation.mutate({ sourceId: data.source.id });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to add URL source");
+    },
+  });
+
+  const processUrlSourceMutation = trpc.knowledge.processUrlSource.useMutation({
+    onSuccess: (data) => {
+      toast.success(`URL processed! ${data.pagesProcessed} pages crawled, ${data.chunksCount} chunks created`);
+      utils.knowledge.list.invalidate({ agentId });
+      utils.knowledge.listCrawlJobs.invalidate({ agentId });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to process URL");
+      utils.knowledge.list.invalidate({ agentId });
+    },
+  });
+
   const resetForm = () => {
     setTitle("");
     setContent("");
     setSourceUrl("");
+    setCrawlDepth(1);
+    setMaxPages(10);
     setSourceType("text");
     setSelectedFile(null);
   };
@@ -193,6 +223,23 @@ export default function KnowledgeBase() {
       return;
     }
 
+    // Handle URL source with crawl configuration
+    if (sourceType === "url") {
+      if (!sourceUrl.trim()) {
+        toast.error("Please enter a URL");
+        return;
+      }
+      addUrlSourceMutation.mutate({
+        agentId,
+        url: sourceUrl.trim(),
+        title: title.trim() || undefined,
+        crawlDepth,
+        maxPages,
+      });
+      return;
+    }
+
+    // Handle text and QA sources
     if (!title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -200,11 +247,6 @@ export default function KnowledgeBase() {
 
     if (sourceType === "text" && !content.trim()) {
       toast.error("Please enter content");
-      return;
-    }
-
-    if (sourceType === "url" && !sourceUrl.trim()) {
-      toast.error("Please enter a URL");
       return;
     }
 
@@ -565,14 +607,71 @@ export default function KnowledgeBase() {
               </div>
 
               {sourceType === "url" && (
-                <div>
-                  <Label>URL</Label>
-                  <Input
-                    value={sourceUrl}
-                    onChange={(e) => setSourceUrl(e.target.value)}
-                    placeholder="https://example.com/document"
-                  />
-                </div>
+                <>
+                  <div>
+                    <Label>URL</Label>
+                    <Input
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="https://example.com/document"
+                      type="url"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter the URL to crawl and extract content from
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Crawl Depth</Label>
+                      <Select
+                        value={crawlDepth.toString()}
+                        onValueChange={(v) => setCrawlDepth(parseInt(v))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 level (single page)</SelectItem>
+                          <SelectItem value="2">2 levels</SelectItem>
+                          <SelectItem value="3">3 levels</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        How many levels deep to follow links
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label>Max Pages</Label>
+                      <Select
+                        value={maxPages.toString()}
+                        onValueChange={(v) => setMaxPages(parseInt(v))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5 pages</SelectItem>
+                          <SelectItem value="10">10 pages</SelectItem>
+                          <SelectItem value="20">20 pages</SelectItem>
+                          <SelectItem value="50">50 pages</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Maximum number of pages to crawl
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                    <p className="font-medium mb-1">🌐 Web Crawling</p>
+                    <p className="text-muted-foreground text-xs">
+                      The system will crawl the URL, extract main content, and follow links up to the specified depth.
+                      Only pages from the same domain will be crawled. The crawler respects robots.txt rules.
+                    </p>
+                  </div>
+                </>
               )}
 
               {sourceType === "file" && (
@@ -639,15 +738,18 @@ export default function KnowledgeBase() {
               </Button>
               <Button
                 onClick={handleAddSource}
-                disabled={createMutation.isPending || isUploading}
+                disabled={createMutation.isPending || isUploading || addUrlSourceMutation.isPending || processUrlSourceMutation.isPending}
               >
-                {(createMutation.isPending || isUploading) ? (
+                {(createMutation.isPending || isUploading || addUrlSourceMutation.isPending || processUrlSourceMutation.isPending) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isUploading ? 'Uploading...' : 'Adding...'}
+                    {isUploading ? 'Uploading...' : processUrlSourceMutation.isPending ? 'Crawling...' : 'Adding...'}
                   </>
                 ) : (
-                  <>Add Source</>
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {sourceType === 'url' ? 'Start Crawl' : 'Add Source'}
+                  </>
                 )}
               </Button>
             </div>
