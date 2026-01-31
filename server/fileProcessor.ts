@@ -11,6 +11,37 @@ import { promisify } from 'util';
 
 const readFile = promisify(fs.readFile);
 
+async function sanitizeFilePath(filePath: string): Promise<string> {
+  // Determine the base uploads directory (can be customized via env var)
+  const uploadsDirEnv = process.env.UPLOAD_DIR;
+  const baseUploadsDir = uploadsDirEnv
+    ? path.resolve(uploadsDirEnv)
+    : path.resolve(process.cwd(), 'uploads');
+
+  // If the provided path is absolute, normalize it; otherwise, resolve it against the base directory.
+  const resolvedPath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(baseUploadsDir, filePath);
+
+  // Resolve any symbolic links and get the canonical path.
+  const realPath = await fs.promises.realpath(resolvedPath);
+
+  // Ensure the final path is within the uploads directory.
+  const normalizedBase = baseUploadsDir.endsWith(path.sep)
+    ? baseUploadsDir
+    : baseUploadsDir + path.sep;
+  const normalizedRealPath = realPath.endsWith(path.sep)
+    ? realPath
+    : realPath + path.sep;
+
+  if (!normalizedRealPath.startsWith(normalizedBase)) {
+    throw new Error('Access to files outside the uploads directory is not allowed');
+  }
+
+  // Remove the extra trailing separator added above.
+  return realPath;
+}
+
 export interface ProcessedFile {
   text: string;
   metadata: {
@@ -27,7 +58,8 @@ export interface ProcessedFile {
  */
 export async function extractTextFromPDF(filePath: string): Promise<ProcessedFile> {
   try {
-    const dataBuffer = await readFile(filePath);
+    const safePath = await sanitizeFilePath(filePath);
+    const dataBuffer = await readFile(safePath);
     const data = await (pdfParse as any).default(dataBuffer);
     
     return {
@@ -49,7 +81,8 @@ export async function extractTextFromPDF(filePath: string): Promise<ProcessedFil
  */
 export async function extractTextFromDOCX(filePath: string): Promise<ProcessedFile> {
   try {
-    const dataBuffer = await readFile(filePath);
+    const safePath = await sanitizeFilePath(filePath);
+    const dataBuffer = await readFile(safePath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
     
     return {
@@ -69,7 +102,8 @@ export async function extractTextFromDOCX(filePath: string): Promise<ProcessedFi
  */
 export async function extractTextFromPlainText(filePath: string): Promise<ProcessedFile> {
   try {
-    const text = await readFile(filePath, 'utf-8');
+    const safePath = await sanitizeFilePath(filePath);
+    const text = await readFile(safePath, 'utf-8');
     
     return {
       text,
