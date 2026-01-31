@@ -133,9 +133,7 @@ async function processFileAsync(
     
     // Clean up file on error
     try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      safeUnlinkUpload(filePath);
     } catch (cleanupError) {
       console.error(`Failed to cleanup file ${fileId}:`, cleanupError);
     }
