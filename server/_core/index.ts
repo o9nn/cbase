@@ -12,6 +12,27 @@ import * as db from "../db";
 import * as fileProcessor from "../fileProcessor";
 import * as rag from "../rag";
 import fs from "fs";
+import path from "path";
+
+const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.resolve(process.cwd(), "uploads");
+
+function safeUnlinkUpload(filePath: string | undefined) {
+  if (!filePath) return;
+
+  try {
+    const root = path.resolve(UPLOAD_ROOT);
+    const absoluteFilePath = path.resolve(filePath);
+
+    if (!absoluteFilePath.startsWith(root + path.sep) && absoluteFilePath !== root) {
+      // Do not delete files outside the upload root
+      return;
+    }
+
+    fs.unlinkSync(absoluteFilePath);
+  } catch {
+    // Swallow errors to avoid crashing on cleanup
+  }
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -149,7 +170,7 @@ async function startServer() {
         const context = await createContext({ req, res, info: {} as any });
         if (!context.user) {
           // Clean up uploaded file
-          fs.unlinkSync(req.file.path);
+          safeUnlinkUpload(req.file.path);
           return res.status(401).json({ 
             success: false, 
             error: "Unauthorized" 
@@ -158,7 +179,7 @@ async function startServer() {
         
         const agentId = parseInt(req.body.agentId || "0");
         if (!agentId) {
-          fs.unlinkSync(req.file.path);
+          safeUnlinkUpload(req.file.path);
           return res.status(400).json({ 
             success: false, 
             error: "Agent ID is required" 
@@ -168,7 +189,7 @@ async function startServer() {
         // Verify agent ownership
         const agent = await db.getAgentById(agentId, context.user.id);
         if (!agent) {
-          fs.unlinkSync(req.file.path);
+          safeUnlinkUpload(req.file.path);
           return res.status(403).json({ 
             success: false, 
             error: "Agent not found or access denied" 
@@ -207,7 +228,7 @@ async function startServer() {
       } catch (error) {
         // Clean up uploaded file on error
         if (req.file) {
-          fs.unlinkSync(req.file.path);
+          safeUnlinkUpload(req.file.path);
         }
         res.status(500).json({ 
           success: false, 
