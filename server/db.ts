@@ -12,7 +12,8 @@ import {
   knowledgeSources, InsertKnowledgeSource, KnowledgeSource,
   knowledgeEmbeddings, InsertKnowledgeEmbedding, KnowledgeEmbedding,
   trainingJobs, InsertTrainingJob, TrainingJob,
-  fileUploads, InsertFileUpload, FileUpload
+  fileUploads, InsertFileUpload, FileUpload,
+  webCrawlJobs, InsertWebCrawlJob, WebCrawlJob
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
@@ -736,3 +737,75 @@ export async function deleteFileUpload(id: number, userId: number): Promise<bool
     ));
   return true;
 }
+
+// ============ WEB CRAWL JOB FUNCTIONS ============
+
+export async function createWebCrawlJob(data: InsertWebCrawlJob): Promise<WebCrawlJob> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [result] = await db.insert(webCrawlJobs).values(data);
+  const insertedId = Number(result.insertId);
+
+  const job = await getWebCrawlJobById(insertedId);
+  if (!job) throw new Error("Failed to retrieve created web crawl job");
+  return job;
+}
+
+export async function getWebCrawlJobById(id: number): Promise<WebCrawlJob | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const results = await db.select().from(webCrawlJobs).where(eq(webCrawlJobs.id, id)).limit(1);
+  return results[0];
+}
+
+export async function getWebCrawlJobBySourceId(sourceId: number): Promise<WebCrawlJob | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const results = await db.select().from(webCrawlJobs)
+    .where(eq(webCrawlJobs.sourceId, sourceId))
+    .orderBy(desc(webCrawlJobs.createdAt))
+    .limit(1);
+  return results[0];
+}
+
+export async function getWebCrawlJobsByAgentId(agentId: number): Promise<WebCrawlJob[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(webCrawlJobs)
+    .where(eq(webCrawlJobs.agentId, agentId))
+    .orderBy(desc(webCrawlJobs.createdAt));
+}
+
+export async function getWebCrawlJobsByUserId(userId: number): Promise<WebCrawlJob[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(webCrawlJobs)
+    .where(eq(webCrawlJobs.userId, userId))
+    .orderBy(desc(webCrawlJobs.createdAt));
+}
+
+export async function updateWebCrawlJob(id: number, data: Partial<InsertWebCrawlJob>): Promise<WebCrawlJob | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  await db.update(webCrawlJobs).set(data).where(eq(webCrawlJobs.id, id));
+  return getWebCrawlJobById(id);
+}
+
+export async function deleteWebCrawlJob(id: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  await db.delete(webCrawlJobs)
+    .where(and(
+      eq(webCrawlJobs.id, id),
+      eq(webCrawlJobs.userId, userId)
+    ));
+  return true;
+}
+

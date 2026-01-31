@@ -753,6 +753,212 @@ const knowledgeRouter = router({
       await db.deleteFileUpload(input.id, ctx.user.id);
       return { success: true };
     }),
+
+  // Add URL source and start crawling
+  addUrlSource: protectedProcedure
+    .input(z.object({
+      agentId: z.number(),
+      url: z.string(),
+      title: z.string().optional(),
+      crawlDepth: z.number().min(1).max(3).default(1),
+      maxPages: z.number().min(1).max(50).default(10),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const urlProcessor = await import("./urlProcessor");
+
+      // Validate URL
+      const validation = urlProcessor.validateUrl(input.url);
+      if (!validation.valid) {
+        throw new Error(validation.error || "Invalid URL");
+      }
+
+      // Verify agent ownership
+      const agent = await db.getAgentById(input.agentId, ctx.user.id);
+      if (!agent) {
+        throw new Error("Agent not found or access denied");
+      }
+
+      // Create knowledge source
+      const source = await db.createKnowledgeSource({
+        agentId: input.agentId,
+        userId: ctx.user.id,
+        sourceType: "url",
+        title: input.title || validation.normalized!,
+        sourceUrl: validation.normalized!,
+        status: "pending",
+        metadata: {
+          crawlDepth: input.crawlDepth,
+          maxPages: input.maxPages,
+        },
+      });
+
+      // Create crawl job
+      const crawlJob = await db.createWebCrawlJob({
+        sourceId: source.id,
+        agentId: input.agentId,
+        userId: ctx.user.id,
+        baseUrl: validation.normalized!,
+        crawlDepth: input.crawlDepth,
+        maxPages: input.maxPages,
+        status: "queued",
+      });
+
+      return { source, crawlJob };
+    }),
+
+  // Process URL source (crawl and extract content)
+  processUrlSource: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const source = await db.getKnowledgeSourceById(input.sourceId, ctx.user.id);
+      if (!source) {
+        throw new Error("Knowledge source not found");
+      }
+
+      if (source.sourceType !== "url") {
+        throw new Error("Source is not a URL type");
+      }
+
+      if (!source.sourceUrl) {
+        throw new Error("No URL specified for this source");
+      }
+
+      // Get or create crawl job
+      let crawlJob = await db.getWebCrawlJobBySourceId(input.sourceId);
+      if (!crawlJob) {
+        crawlJob = await db.createWebCrawlJob({
+          sourceId: input.sourceId,
+          agentId: source.agentId,
+          userId: ctx.user.id,
+          baseUrl: source.sourceUrl,
+          crawlDepth: (source.metadata as any)?.crawlDepth || 1,
+          maxPages: (source.metadata as any)?.maxPages || 10,
+          status: "queued",
+        });
+      }
+
+      // Update statuses
+      await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+        status: "processing",
+      });
+      await db.updateWebCrawlJob(crawlJob.id, {
+        status: "running",
+        startedAt: new Date(),
+      });
+
+      try {
+        const urlProcessor = await import("./urlProcessor");
+
+        // Crawl the URLs
+        const results = await urlProcessor.crawlUrls(source.sourceUrl, {
+          maxDepth: crawlJob.crawlDepth,
+          maxPages: crawlJob.maxPages,
+          respectRobotsTxt: true,
+          sameDomain: true,
+        });
+
+        // Update crawl job progress
+        await db.updateWebCrawlJob(crawlJob.id, {
+          urlsTotal: results.length,
+          urlsProcessed: results.length,
+          pagesExtracted: results.length,
+          urlsDiscovered: results.map(r => r.url),
+        });
+
+        // Combine all content from crawled pages
+        const combinedContent = results
+          .map(r => `# ${r.title}\n\n${r.markdown}`)
+          .join('\n\n---\n\n');
+
+        // Update knowledge source with extracted content
+        await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+          content: combinedContent,
+          charactersCount: combinedContent.length,
+          metadata: {
+            ...source.metadata,
+            crawlResults: {
+              totalPages: results.length,
+              urls: results.map(r => r.url),
+              titles: results.map(r => r.title),
+              wordCount: results.reduce((sum, r) => sum + r.metadata.wordCount, 0),
+            },
+          },
+        });
+
+        // Now process the content for RAG
+        const processed = await rag.processDocumentForRAG(combinedContent);
+
+        // Delete old embeddings
+        await db.deleteEmbeddingsBySourceId(input.sourceId);
+
+        // Save new embeddings
+        for (const chunk of processed) {
+          await db.createKnowledgeEmbedding({
+            sourceId: input.sourceId,
+            agentId: source.agentId,
+            chunkText: chunk.text,
+            chunkIndex: chunk.index,
+            embedding: chunk.embedding,
+            metadata: chunk.metadata,
+          });
+        }
+
+        // Update statuses
+        await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+          status: "trained",
+          chunksCount: processed.length,
+        });
+
+        await db.updateWebCrawlJob(crawlJob.id, {
+          status: "completed",
+          completedAt: new Date(),
+        });
+
+        // Update agent's last trained timestamp
+        await db.updateAgent(source.agentId, ctx.user.id, {
+          lastTrainedAt: new Date(),
+        });
+
+        return {
+          success: true,
+          chunksCount: processed.length,
+          pagesProcessed: results.length,
+        };
+      } catch (error) {
+        await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
+          status: "error",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+        });
+        await db.updateWebCrawlJob(crawlJob.id, {
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          completedAt: new Date(),
+        });
+        throw error;
+      }
+    }),
+
+  // Get crawl job status
+  getCrawlJob: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const source = await db.getKnowledgeSourceById(input.sourceId, ctx.user.id);
+      if (!source) {
+        throw new Error("Knowledge source not found");
+      }
+      return db.getWebCrawlJobBySourceId(input.sourceId);
+    }),
+
+  // List all crawl jobs for an agent
+  listCrawlJobs: protectedProcedure
+    .input(z.object({ agentId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const agent = await db.getAgentById(input.agentId, ctx.user.id);
+      if (!agent) {
+        throw new Error("Agent not found or access denied");
+      }
+      return db.getWebCrawlJobsByAgentId(input.agentId);
+    }),
 });
 
 // ============ MAIN ROUTER ============
