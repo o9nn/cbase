@@ -826,13 +826,14 @@ const knowledgeRouter = router({
       // Get or create crawl job
       let crawlJob = await db.getWebCrawlJobBySourceId(input.sourceId);
       if (!crawlJob) {
+        const metadata = source.metadata as { crawlDepth?: number; maxPages?: number } | null;
         crawlJob = await db.createWebCrawlJob({
           sourceId: input.sourceId,
           agentId: source.agentId,
           userId: ctx.user.id,
           baseUrl: source.sourceUrl,
-          crawlDepth: (source.metadata as any)?.crawlDepth || 1,
-          maxPages: (source.metadata as any)?.maxPages || 10,
+          crawlDepth: metadata?.crawlDepth || 1,
+          maxPages: metadata?.maxPages || 10,
           status: "queued",
         });
       }
@@ -871,11 +872,12 @@ const knowledgeRouter = router({
           .join('\n\n---\n\n');
 
         // Update knowledge source with extracted content
+        const existingMetadata = source.metadata as Record<string, unknown> | null;
         await db.updateKnowledgeSource(input.sourceId, ctx.user.id, {
           content: combinedContent,
           charactersCount: combinedContent.length,
           metadata: {
-            ...source.metadata,
+            ...(existingMetadata || {}),
             crawlResults: {
               totalPages: results.length,
               urls: results.map(r => r.url),

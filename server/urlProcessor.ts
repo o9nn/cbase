@@ -66,7 +66,7 @@ export function validateUrl(url: string): { valid: boolean; normalized?: string;
       hostname === '127.0.0.1' ||
       hostname.startsWith('192.168.') ||
       hostname.startsWith('10.') ||
-      hostname.startsWith('172.16.') ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) || // 172.16.0.0/12
       hostname === '::1'
     ) {
       return { valid: false, error: 'Private or localhost URLs are not allowed' };
@@ -144,11 +144,11 @@ function extractMainContent($: cheerio.CheerioAPI): string {
 /**
  * Extract metadata from HTML
  */
-function extractMetadata($: cheerio.CheerioAPI, url: string): UrlProcessingResult['metadata'] {
+function extractMetadata($: cheerio.CheerioAPI, url: string): UrlProcessingResult['metadata'] & { title: string } {
   const title = $('title').text().trim() ||
                 $('meta[property="og:title"]').attr('content') ||
                 $('h1').first().text().trim() ||
-                '';
+                'Untitled';
   
   const description = $('meta[name="description"]').attr('content') ||
                      $('meta[property="og:description"]').attr('content') ||
@@ -185,6 +185,7 @@ function extractMetadata($: cheerio.CheerioAPI, url: string): UrlProcessingResul
   const wordCount = content.split(/\s+/).filter(word => word.length > 0).length;
   
   return {
+    title,
     description: description || undefined,
     keywords: keywords || undefined,
     author: author || undefined,
@@ -259,13 +260,10 @@ export async function processUrl(
   
   // Extract content
   const content = extractMainContent($);
-  const metadata = extractMetadata($, normalizedUrl);
+  const metadataWithTitle = extractMetadata($, normalizedUrl);
   
-  // Get title
-  const title = $('title').text().trim() ||
-                $('meta[property="og:title"]').attr('content') ||
-                $('h1').first().text().trim() ||
-                'Untitled';
+  // Separate title from metadata
+  const { title, ...metadata } = metadataWithTitle;
   
   // Convert to markdown
   const markdown = htmlToMarkdown(response.data);
