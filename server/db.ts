@@ -11,7 +11,8 @@ import {
   alerts, InsertAlert, Alert,
   knowledgeSources, InsertKnowledgeSource, KnowledgeSource,
   knowledgeEmbeddings, InsertKnowledgeEmbedding, KnowledgeEmbedding,
-  trainingJobs, InsertTrainingJob, TrainingJob
+  trainingJobs, InsertTrainingJob, TrainingJob,
+  fileUploads, InsertFileUpload, FileUpload
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
@@ -675,4 +676,63 @@ export async function getPendingTrainingJobs(): Promise<TrainingJob[]> {
   return db.select().from(trainingJobs)
     .where(eq(trainingJobs.status, "queued"))
     .orderBy(trainingJobs.createdAt);
+}
+
+// ========== FILE UPLOADS ==========
+
+export async function createFileUpload(data: Omit<InsertFileUpload, 'id' | 'uploadedAt'>): Promise<FileUpload> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(fileUploads).values(data);
+  const insertedId = Number(result[0].insertId);
+  const fileUpload = await getFileUploadById(insertedId);
+  if (!fileUpload) throw new Error("Failed to retrieve created file upload");
+  return fileUpload;
+}
+
+export async function getFileUploadById(id: number): Promise<FileUpload | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const results = await db.select().from(fileUploads).where(eq(fileUploads.id, id)).limit(1);
+  return results[0];
+}
+
+export async function getFileUploadsByAgentId(agentId: number): Promise<FileUpload[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(fileUploads)
+    .where(eq(fileUploads.agentId, agentId))
+    .orderBy(desc(fileUploads.uploadedAt));
+}
+
+export async function getFileUploadsByUserId(userId: number): Promise<FileUpload[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(fileUploads)
+    .where(eq(fileUploads.userId, userId))
+    .orderBy(desc(fileUploads.uploadedAt));
+}
+
+export async function updateFileUpload(id: number, data: Partial<InsertFileUpload>): Promise<FileUpload | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  await db.update(fileUploads).set(data).where(eq(fileUploads.id, id));
+  return getFileUploadById(id);
+}
+
+export async function deleteFileUpload(id: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  await db.delete(fileUploads)
+    .where(and(
+      eq(fileUploads.id, id),
+      eq(fileUploads.userId, userId)
+    ));
+  return true;
 }

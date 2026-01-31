@@ -188,7 +188,7 @@ const chatRouter = router({
                 id: e.id,
                 embedding: e.embedding || [],
                 text: e.chunkText,
-                metadata: e.metadata,
+                metadata: e.metadata || undefined,
               })),
               5, // top 5 chunks
               0.7 // minimum similarity threshold
@@ -530,7 +530,7 @@ const knowledgeRouter = router({
       title: z.string().min(1).max(255),
       content: z.string().optional(),
       sourceUrl: z.string().optional(),
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const source = await db.createKnowledgeSource({
@@ -699,6 +699,59 @@ const knowledgeRouter = router({
       });
 
       return { success: true, jobId: job.id };
+    }),
+
+  // List file uploads for an agent
+  listFiles: protectedProcedure
+    .input(z.object({ agentId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      // Verify agent ownership
+      const agent = await db.getAgentById(input.agentId, ctx.user.id);
+      if (!agent) {
+        throw new Error("Agent not found or access denied");
+      }
+      return db.getFileUploadsByAgentId(input.agentId);
+    }),
+
+  // Get a specific file upload
+  getFile: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const file = await db.getFileUploadById(input.id);
+      if (!file || file.userId !== ctx.user.id) {
+        throw new Error("File not found or access denied");
+      }
+      return file;
+    }),
+
+  // Delete a file upload
+  deleteFile: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const file = await db.getFileUploadById(input.id);
+      if (!file || file.userId !== ctx.user.id) {
+        throw new Error("File not found or access denied");
+      }
+
+      // Delete associated knowledge source if exists
+      if (file.sourceId) {
+        await db.deleteKnowledgeSource(file.sourceId, ctx.user.id);
+      }
+
+      // Delete file from disk
+      if (file.localPath) {
+        try {
+          const fs = await import('fs');
+          if (fs.existsSync(file.localPath)) {
+            fs.unlinkSync(file.localPath);
+          }
+        } catch (error) {
+          console.error("Failed to delete file from disk:", error);
+        }
+      }
+
+      await db.deleteFileUpload(input.id, ctx.user.id);
+      return { success: true };
     }),
 });
 

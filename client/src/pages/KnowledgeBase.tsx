@@ -51,6 +51,7 @@ export default function KnowledgeBase() {
   const { data: agent } = trpc.agent.get.useQuery({ id: agentId });
   const { data: sources = [], isLoading } = trpc.knowledge.list.useQuery({ agentId });
   const { data: trainingJobs = [] } = trpc.knowledge.getTrainingJobs.useQuery({ agentId });
+  const { data: fileUploads = [] } = trpc.knowledge.listFiles.useQuery({ agentId });
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [sourceType, setSourceType] = useState<"text" | "file" | "url" | "qa">("text");
@@ -58,6 +59,8 @@ export default function KnowledgeBase() {
   const [content, setContent] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const createMutation = trpc.knowledge.create.useMutation({
     onSuccess: () => {
@@ -103,14 +106,93 @@ export default function KnowledgeBase() {
     },
   });
 
+  const deleteFileMutation = trpc.knowledge.deleteFile.useMutation({
+    onSuccess: () => {
+      toast.success("File deleted successfully");
+      utils.knowledge.listFiles.invalidate({ agentId });
+      utils.knowledge.list.invalidate({ agentId });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete file");
+    },
+  });
+
   const resetForm = () => {
     setTitle("");
     setContent("");
     setSourceUrl("");
     setSourceType("text");
+    setSelectedFile(null);
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      toast.error("Please select a file");
+      return;
+    }
+
+    if (!title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (selectedFile.size > maxSize) {
+      toast.error("File size must be less than 10MB");
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'text/plain',
+      'text/markdown'
+    ];
+    
+    if (!allowedTypes.includes(selectedFile.type)) {
+      toast.error("Invalid file type. Allowed: PDF, DOCX, DOC, TXT, MD");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('agentId', agentId.toString());
+      formData.append('title', title.trim());
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`File uploaded successfully! Processing ${data.filename}...`);
+        utils.knowledge.list.invalidate({ agentId });
+        setShowAddDialog(false);
+        resetForm();
+      } else {
+        toast.error(data.error || "Failed to upload file");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to upload file");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleAddSource = () => {
+    // Handle file upload separately
+    if (sourceType === "file") {
+      handleFileUpload();
+      return;
+    }
+
     if (!title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -258,15 +340,28 @@ export default function KnowledgeBase() {
         </Card>
       </div>
 
-      {/* Knowledge Sources List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Knowledge Sources</CardTitle>
-          <CardDescription>
-            Manage the knowledge sources used to train your agent
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      {/* Knowledge Sources and Files Tabs */}
+      <Tabs defaultValue="sources" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="sources">
+            <BookOpen className="h-4 w-4 mr-2" />
+            Knowledge Sources ({sources.length})
+          </TabsTrigger>
+          <TabsTrigger value="files">
+            <FileText className="h-4 w-4 mr-2" />
+            Uploaded Files ({fileUploads.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sources">
+          <Card>
+            <CardHeader>
+              <CardTitle>Knowledge Sources</CardTitle>
+              <CardDescription>
+                Manage the knowledge sources used to train your agent
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -300,10 +395,10 @@ export default function KnowledgeBase() {
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{source.sourceType.toUpperCase()}</span>
-                      {source.charactersCount > 0 && (
-                        <span>{source.charactersCount.toLocaleString()} characters</span>
+                      {(source.charactersCount ?? 0) > 0 && (
+                        <span>{(source.charactersCount ?? 0).toLocaleString()} characters</span>
                       )}
-                      {source.chunksCount > 0 && (
+                      {(source.chunksCount ?? 0) > 0 && (
                         <span>{source.chunksCount} chunks</span>
                       )}
                       <span>{new Date(source.createdAt).toLocaleDateString()}</span>
@@ -344,6 +439,95 @@ export default function KnowledgeBase() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="files">
+          <Card>
+            <CardHeader>
+              <CardTitle>Uploaded Files</CardTitle>
+              <CardDescription>
+                Manage files uploaded for knowledge training
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {fileUploads.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No files uploaded yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Upload PDF, DOCX, or TXT files to train your agent
+                  </p>
+                  <Button onClick={() => {
+                    setSourceType("file");
+                    setShowAddDialog(true);
+                  }}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload First File
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {fileUploads.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium truncate">{file.originalFilename}</h4>
+                          {file.status === "completed" && (
+                            <Badge variant="default" className="bg-green-500">
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                              Processed
+                            </Badge>
+                          )}
+                          {file.status === "processing" && (
+                            <Badge variant="secondary">
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              Processing
+                            </Badge>
+                          )}
+                          {file.status === "error" && (
+                            <Badge variant="destructive">
+                              <AlertCircle className="mr-1 h-3 w-3" />
+                              Error
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <span>{file.fileType.toUpperCase()}</span>
+                          <span>{(file.fileSize / 1024).toFixed(2)} KB</span>
+                          <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
+                        </div>
+                        {file.errorMessage && (
+                          <p className="text-xs text-red-500 mt-1">{file.errorMessage}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this file?")) {
+                              deleteFileMutation.mutate({ id: file.id });
+                            }
+                          }}
+                          disabled={deleteFileMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Add Source Dialog */}
       {showAddDialog && (
@@ -391,6 +575,43 @@ export default function KnowledgeBase() {
                 </div>
               )}
 
+              {sourceType === "file" && (
+                <div>
+                  <Label>File</Label>
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+                    <input
+                      type="file"
+                      id="file-upload"
+                      className="hidden"
+                      accept=".pdf,.docx,.doc,.txt,.md"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setSelectedFile(file);
+                          if (!title) {
+                            setTitle(file.name);
+                          }
+                        }
+                      }}
+                    />
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm font-medium">
+                        {selectedFile ? selectedFile.name : "Click to upload or drag and drop"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF, DOCX, DOC, TXT, MD (max 10MB)
+                      </p>
+                      {selectedFile && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Size: {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {(sourceType === "text" || sourceType === "qa") && (
                 <div>
                   <Label>Content</Label>
@@ -418,12 +639,12 @@ export default function KnowledgeBase() {
               </Button>
               <Button
                 onClick={handleAddSource}
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || isUploading}
               >
-                {createMutation.isPending ? (
+                {(createMutation.isPending || isUploading) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adding...
+                    {isUploading ? 'Uploading...' : 'Adding...'}
                   </>
                 ) : (
                   <>Add Source</>
